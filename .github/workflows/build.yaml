@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
   schedule:
-    - cron: "0 */2 * * *"
+    - cron: "0 */24 * * *"
 
 env:
   REMOTE_REPOSITORY: qosmio/openwrt-ipq
@@ -15,6 +15,8 @@ env:
   RELEASE_PREFIX: qualcommax-6.x-nss-wifi
   NSS_PACKAGES_REPOSITORY: qosmio/nss-packages
   NSS_PACKAGES_REPOSITORY_BRANCH: NSS-12.5-K6.x
+  NSS_FORK_REPO: dentillozie/Qualcommax_NSS_Builder
+  NSS_FORK_REPO_BRANCH: main
 
 jobs:
   check_commits:
@@ -40,11 +42,18 @@ jobs:
           nss_packages_repo_last_built_commit_sha=$(curl -sL "https://api.github.com/repos/${{ github.repository }}/releases/latest" | jq -r '.body' | grep -oP 'NSS Packages Commit: \K\w+' || echo '')
           echo "new_commits=$([[ "$nss_packages_repo_latest_commit_sha" != "$nss_packages_repo_last_built_commit_sha" ]] && echo "true" || echo "false")" >> $GITHUB_OUTPUT
           echo "latest_commit_sha=$nss_packages_repo_latest_commit_sha" >> $GITHUB_OUTPUT
+      - name: Check for new commits in fork
+        id: check_new_commit_fork
+        run: |
+          nss_packages_repo_latest_commit_sha=$(curl -sL "https://api.github.com/repos/${{ env.NSS_FORK_REPO }}/commits?sha=${{ env.NSS_FORK_REPO_BRANCH }}&per_page=1" | jq -r '.[0].sha')
+          nss_packages_repo_last_built_commit_sha=$(curl -sL "https://api.github.com/repos/${{ github.repository }}/releases/latest" | jq -r '.body' | grep -oP 'NSS Packages Commit: \K\w+' || echo '')
+          echo "new_commits=$([[ "$nss_packages_repo_latest_commit_sha" != "$nss_packages_repo_last_built_commit_sha" ]] && echo "true" || echo "false")" >> $GITHUB_OUTPUT
+          echo "latest_commit_sha=$nss_packages_repo_latest_commit_sha" >> $GITHUB_OUTPUT
 
   build:
     name: Build OpenWrt
     needs: check_commits
-    if: needs.check_commits.outputs.new_commits == 'true' || needs.check_commits.outputs.nss_packages_repo_new_commits == 'true' || github.event_name == 'workflow_dispatch'
+    if: needs.check_commits.outputs.check_new_commit_fork == 'true' || needs.check_commits.outputs.new_commits == 'true' || needs.check_commits.outputs.nss_packages_repo_new_commits == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - name: Install dependencies
